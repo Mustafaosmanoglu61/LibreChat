@@ -15,6 +15,3 @@ docs
 
 # Ignore all hidden files
 .*
-
-# Keep the Medical Chat runtime config in the image
-!librechat.yaml

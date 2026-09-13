@@ -13,3 +13,18 @@ interface:
   bookmarks: true
   multiConvo: true
   agents: true
+
+# Web araması — anahtarsız yığın. Keenable'ın herkese açık uçları hız sınırlı;
+# anahtar yalnızca bu sınırı yükseltir, çalışması için gerekli değil.
+# Reranker'ların hepsi anahtar istediği için 'none' seçildi.
+webSearch:
+  searchProvider: keenable
+  scraperProvider: keenable
+  rerankerType: none
+  keenableSearchOptions:
+    maxResults: 5
+    attributionTitle: Medical Chat
+    timeout: 15000
+  keenableScraperOptions:
+    attributionTitle: Medical Chat
+    timeout: 15000

@@ -28,3 +28,13 @@ webSearch:
   keenableScraperOptions:
     attributionTitle: Medical Chat
     timeout: 15000
+
+# Langfuse izleme — kullanım metriklerinin kime ait olduğunu görebilmek için
+# kullanıcıyı e-posta ile etiketler ve model/endpoint bilgisini iz üstüne yazar.
+# Varsayılan iz yalnızca dahili kullanıcı kimliğini taşır, bu alanlar açıkça
+# listelenmedikçe dışa aktarılmaz.
+langfuse:
+  trace:
+    userIdField: email
+    userMetadataFields: [email, username, role]
+    conversationMetadataFields: [conversationId, endpoint, model, modelLabel, spec]

@@ -268,7 +268,7 @@ const sendVerificationEmail = async (user) => {
   }/verify?token=${verifyToken}&email=${encodeURIComponent(email)}`;
   await sendEmail({
     email,
-    subject: 'Verify your email',
+    subject: 'E-posta adresinizi doğrulayın',
     payload: {
       appName: process.env.APP_TITLE || 'Medical Chat',
       name: user.name || user.username || email,
@@ -537,7 +537,7 @@ const requestPasswordReset = async (req) => {
   if (emailEnabled) {
     await sendEmail({
       email: user.email,
-      subject: 'Password Reset Request',
+      subject: 'Şifre sıfırlama talebi',
       payload: {
         appName: process.env.APP_TITLE || 'Medical Chat',
         name: user.name || user.username || user.email,
@@ -588,7 +588,7 @@ const resetPassword = async (userId, token, password) => {
   if (checkEmailConfig()) {
     await sendEmail({
       email: user.email,
-      subject: 'Password Reset Successfully',
+      subject: 'Şifreniz güncellendi',
       payload: {
         appName: process.env.APP_TITLE || 'Medical Chat',
         name: user.name || user.username || user.email,
@@ -977,7 +977,7 @@ const resendVerificationEmail = async (req) => {
 
     await sendEmail({
       email: user.email,
-      subject: 'Verify your email',
+      subject: 'E-posta adresinizi doğrulayın',
       payload: {
         appName: process.env.APP_TITLE || 'Medical Chat',
         name: user.name || user.username || user.email,

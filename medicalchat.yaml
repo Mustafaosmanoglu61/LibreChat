@@ -38,3 +38,32 @@ langfuse:
     userIdField: email
     userMetadataFields: [email, username, role]
     conversationMetadataFields: [conversationId, endpoint, model, modelLabel, spec]
+
+# Ek model sağlayıcıları. İkisi de OpenAI uyumlu API sunduğu için varsayılan
+# istemci kullanılıyor. `fetch: true` model listesini sağlayıcıdan canlı çeker;
+# anahtar tanımlı değilse `default` listesine düşer.
+endpoints:
+  custom:
+    - name: 'DeepSeek'
+      apiKey: '${DEEPSEEK_API_KEY}'
+      baseURL: 'https://api.deepseek.com/v1'
+      models:
+        default:
+          - 'deepseek-chat'
+          - 'deepseek-reasoner'
+        fetch: true
+      titleConvo: true
+      titleModel: 'deepseek-chat'
+      modelDisplayLabel: 'DeepSeek'
+
+    - name: 'Kimi'
+      apiKey: '${MOONSHOT_API_KEY}'
+      baseURL: 'https://api.moonshot.ai/v1'
+      models:
+        default:
+          - 'kimi-k2-0905-preview'
+          - 'kimi-k2-turbo-preview'
+        fetch: true
+      titleConvo: true
+      titleModel: 'kimi-k2-turbo-preview'
+      modelDisplayLabel: 'Kimi'

@@ -151,8 +151,8 @@ export default defineConfig(({ command }) => ({
       },
       includeAssets: [],
       manifest: {
-        name: 'Medical Chat',
-        short_name: 'Medical Chat',
+        name: 'MLP/AI',
+        short_name: 'MLP/AI',
         description: 'Medical Park Hastaneler Grubu yapay zeka asistani',
         display: 'standalone',
         background_color: '#ED1B24',

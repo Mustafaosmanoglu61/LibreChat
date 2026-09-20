@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { GraphEvents, Constants, ToolEndHandler } from '@librechat/agents';
 import { logger, normalizeSkillFrontmatterKeys } from '@librechat/data-schemas';
 import {
+  AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_DEFAULT,
   hasActivePiiFields,
   hasActivePiiPatterns,
   hasToolCallErrorPrefix,
@@ -22,8 +23,12 @@ import type {
   StreamEventData,
   ToolEndCallback as SdkToolEndCallback,
 } from '@librechat/agents';
+import type {
+  BackgroundToolResultClaim,
+  DeleteSkillResult,
+  ValidationIssue,
+} from '@librechat/data-schemas';
 import type { CodeEnvRef, CodeWorkspaceOperation, PtcToolCallEvent } from 'librechat-data-provider';
-import type { BackgroundToolResultClaim, ValidationIssue } from '@librechat/data-schemas';
 import type { StructuredToolInterface } from '@librechat/agents/langchain/tools';
 import type { CodeEnvFile, CodeSessionContext } from '@librechat/agents';
 import type {
@@ -116,9 +121,13 @@ import {
 } from './intent';
 import { buildSkillPrimeMessage, isSkillFilePath, SKILL_FILE_PREFIX } from './skills';
 import { resolveCallerCapabilityProjectionSnapshot } from './callerCapabilities';
+import { resolveAttachedWorkspaceQueueWaitMs } from '~/code/command';
+import { BACKGROUND_TOOL_INVOCATION_CONFIG_KEY } from './invocation';
 import { mergeCodeFilesIntoContext } from './codeFilesSession';
+import { toolValidationFeedback } from './validationFeedback';
 import { createSkillContentDigest } from './compatibility';
 import { isMissingSandboxPathError } from '~/files/code';
+import { deleteSkillWithRetry } from '~/skills/cleanup';
 import { resolveDownloadPath } from '~/storage/path';
 import { parseFrontmatter } from '../skills/import';
 import { cleanCodeToolOutput } from './cleanup';
@@ -263,6 +272,8 @@ export interface ToolExecuteOptions {
   runFiles?: Pick<RunFileSession, 'isActive' | 'prepareTools' | 'withCodeExecution'>;
   /** Trusted deployment gate for cooperative ordinary-tool cancellation. */
   ordinaryToolCancellation?: boolean;
+  /** Deployment-configured cap for terminal output copied into durable receipts. */
+  backgroundCompletionResultMaxChars?: number;
   /** Callback to process tool artifacts (code output files, file citations, etc.) */
   toolEndCallback?: ToolEndCallback;
   /** Durable internal-completion adapter, present only for an Event Actor invocation. */
@@ -452,7 +463,7 @@ export interface ToolExecuteOptions {
     skillId: Types.ObjectId | string;
   }) => Promise<void>;
   /** Deletes a freshly-created skill if owner-permission setup fails. */
-  deleteSkill?: (id: string) => Promise<{ deleted: boolean }>;
+  deleteSkill?: (id: string) => Promise<DeleteSkillResult>;
   /** Saves or replaces a bundled skill file in configured storage and metadata. */
   saveSkillFileContent?: (params: {
     req: ServerRequest;
@@ -532,6 +543,7 @@ export interface ToolExecuteOptions {
   readWorkspaceFile?: (params: {
     file_path: string;
     workspace_id: string;
+    workspace_instance_id?: string;
     start_line: number;
     max_lines: number;
     codeApiBaseUrl: string;
@@ -539,11 +551,13 @@ export interface ToolExecuteOptions {
     bridgeWorkerId?: string;
     req?: ServerRequest;
     signal?: AbortSignal;
+    maxQueueWaitMs?: number;
   }) => Promise<WorkspaceReadResult>;
   /** Searches literal text within an attached worker's logical workspace. */
   searchWorkspace?: (params: {
     query: string;
     workspace_id: string;
+    workspace_instance_id?: string;
     path?: string;
     max_results: number;
     codeApiBaseUrl: string;
@@ -551,10 +565,12 @@ export interface ToolExecuteOptions {
     bridgeWorkerId?: string;
     req?: ServerRequest;
     signal?: AbortSignal;
+    maxQueueWaitMs?: number;
   }) => Promise<WorkspaceSearchResult>;
   /** Lists relative file paths within an attached worker's logical workspace. */
   listWorkspaceFiles?: (params: {
     workspace_id: string;
+    workspace_instance_id?: string;
     path?: string;
     after_path?: string;
     max_results: number;
@@ -563,6 +579,7 @@ export interface ToolExecuteOptions {
     bridgeWorkerId?: string;
     req?: ServerRequest;
     signal?: AbortSignal;
+    maxQueueWaitMs?: number;
   }) => Promise<WorkspaceListResult>;
   /** Writes a UTF-8 file within an attached worker's logical workspace. */
   writeWorkspaceFile?: (params: {
@@ -570,22 +587,26 @@ export interface ToolExecuteOptions {
     content: string;
     overwrite: boolean;
     workspace_id: string;
+    workspace_instance_id?: string;
     codeApiBaseUrl: string;
     executionProfile: CodeExecutionContext['executionProfile'];
     bridgeWorkerId?: string;
     req?: ServerRequest;
     signal?: AbortSignal;
+    maxQueueWaitMs?: number;
   }) => Promise<WorkspaceWriteResult>;
   /** Previews exact replacements without mutating an attached worker workspace. */
   previewWorkspaceEdit?: (params: {
     file_path: string;
     edits: Array<{ oldText: string; newText: string }>;
     workspace_id: string;
+    workspace_instance_id?: string;
     codeApiBaseUrl: string;
     executionProfile: CodeExecutionContext['executionProfile'];
     bridgeWorkerId?: string;
     req?: ServerRequest;
     signal?: AbortSignal;
+    maxQueueWaitMs?: number;
   }) => Promise<WorkspacePreviewEditResult>;
   /** Applies exact replacements atomically within an attached worker workspace. */
   editWorkspaceFile?: (params: {
@@ -593,11 +614,13 @@ export interface ToolExecuteOptions {
     edits: Array<{ oldText: string; newText: string }>;
     expected_base_sha256?: string;
     workspace_id: string;
+    workspace_instance_id?: string;
     codeApiBaseUrl: string;
     executionProfile: CodeExecutionContext['executionProfile'];
     bridgeWorkerId?: string;
     req?: ServerRequest;
     signal?: AbortSignal;
+    maxQueueWaitMs?: number;
   }) => Promise<WorkspaceEditResult>;
   /**
    * Reads a code-execution sandbox file by shelling `cat` through the
@@ -817,18 +840,21 @@ function getThrownValueMessage(error: unknown): string {
   return stringifyThrownValue(error);
 }
 
-function getSafeToolError(error: unknown): {
+function getSafeToolError(
+  error: unknown,
+  feedback?: string,
+): {
   message: string;
   logContext: Record<string, unknown>;
 } {
-  const rawMessage = getThrownValueMessage(error);
+  const rawMessage = feedback ?? getThrownValueMessage(error);
   const message = truncateMiddle(rawMessage, MAX_TOOL_ERROR_MESSAGE_CHARS);
-  const stack = error instanceof Error && error.stack ? error.stack : undefined;
+  const stack = !feedback && error instanceof Error && error.stack ? error.stack : undefined;
 
   return {
     message,
     logContext: {
-      name: error instanceof Error ? error.name : typeof error,
+      errorName: error instanceof Error ? error.name : typeof error,
       ...(error instanceof WorkspaceToolHttpError
         ? {
             upstreamStatus: error.upstreamStatus,
@@ -836,7 +862,7 @@ function getSafeToolError(error: unknown): {
             upstreamBodyTruncated: error.upstreamBodyTruncated,
           }
         : {}),
-      message,
+      errorMessage: message,
       messageLength: rawMessage.length,
       messageTruncated: message.length !== rawMessage.length,
       stack: stack ? truncateMiddle(stack, MAX_TOOL_ERROR_STACK_CHARS) : undefined,
@@ -2414,9 +2440,15 @@ async function handleWorkspaceFileRead(
     const result = await readWorkspaceFile({
       file_path: filePath,
       workspace_id: workspaceId,
+      ...(codeExecutionContext.codeWorkspace?.workspaceInstanceId
+        ? { workspace_instance_id: codeExecutionContext.codeWorkspace.workspaceInstanceId }
+        : {}),
       start_line: startLine,
       max_lines: maxLines,
       codeApiBaseUrl: codeExecutionContext.baseUrl,
+      maxQueueWaitMs: resolveAttachedWorkspaceQueueWaitMs(
+        codeExecutionContext.codeEnvironmentConfigSchema,
+      ),
       executionProfile: codeExecutionContext.executionProfile,
       ...(codeExecutionContext.bridgeWorkerId
         ? { bridgeWorkerId: codeExecutionContext.bridgeWorkerId }
@@ -2516,9 +2548,15 @@ async function handleWorkspaceSearchCall(
     const result = await options.searchWorkspace({
       query: args.query,
       workspace_id: workspaceId,
+      ...(codeExecutionContext.codeWorkspace?.workspaceInstanceId
+        ? { workspace_instance_id: codeExecutionContext.codeWorkspace.workspaceInstanceId }
+        : {}),
       ...(typeof args.path === 'string' && args.path.length > 0 ? { path: args.path } : {}),
       max_results: Number(maxResults),
       codeApiBaseUrl: codeExecutionContext.baseUrl,
+      maxQueueWaitMs: resolveAttachedWorkspaceQueueWaitMs(
+        codeExecutionContext.codeEnvironmentConfigSchema,
+      ),
       executionProfile: codeExecutionContext.executionProfile,
       ...(codeExecutionContext.bridgeWorkerId
         ? { bridgeWorkerId: codeExecutionContext.bridgeWorkerId }
@@ -2600,12 +2638,18 @@ async function handleWorkspaceListCall(
   try {
     const result = await options.listWorkspaceFiles({
       workspace_id: workspaceId,
+      ...(codeExecutionContext.codeWorkspace?.workspaceInstanceId
+        ? { workspace_instance_id: codeExecutionContext.codeWorkspace.workspaceInstanceId }
+        : {}),
       ...(typeof args.path === 'string' && args.path.length > 0 ? { path: args.path } : {}),
       ...(typeof args.after_path === 'string' && args.after_path.length > 0
         ? { after_path: args.after_path }
         : {}),
       max_results: Number(maxResults),
       codeApiBaseUrl: codeExecutionContext.baseUrl,
+      maxQueueWaitMs: resolveAttachedWorkspaceQueueWaitMs(
+        codeExecutionContext.codeEnvironmentConfigSchema,
+      ),
       executionProfile: codeExecutionContext.executionProfile,
       ...(codeExecutionContext.bridgeWorkerId
         ? { bridgeWorkerId: codeExecutionContext.bridgeWorkerId }
@@ -3567,11 +3611,20 @@ async function writeSkillMd({
       await options.grantSkillOwner({ req, skillId: result.skill._id });
     } catch (error) {
       if (options.deleteSkill) {
-        await options.deleteSkill(result.skill._id.toString()).catch((rollbackError: unknown) => {
-          logger.error('[create_file] Failed to roll back skill after permission error', {
-            rollbackError,
+        await deleteSkillWithRetry(options.deleteSkill, result.skill._id.toString())
+          .then((deletion) => {
+            if (!deletion.cleanupComplete) {
+              logger.error('[create_file] Skill rollback left dependent cleanup incomplete', {
+                skillId: result.skill._id.toString(),
+                failedCleanupSteps: deletion.failedCleanupSteps,
+              });
+            }
+          })
+          .catch((rollbackError: unknown) => {
+            logger.error('[create_file] Failed to roll back skill after permission error', {
+              rollbackError,
+            });
           });
-        });
       }
       throw error;
     }
@@ -3755,15 +3808,23 @@ function attachedWorkspaceMutationParams(
   signal: AbortSignal | undefined,
 ): {
   workspace_id: string;
+  workspace_instance_id?: string;
   codeApiBaseUrl: string;
   executionProfile: CodeExecutionContext['executionProfile'];
   bridgeWorkerId?: string;
   req?: ServerRequest;
   signal?: AbortSignal;
+  maxQueueWaitMs: number;
 } {
   return {
     workspace_id: workspaceId,
+    ...(codeExecutionContext.codeWorkspace?.workspaceInstanceId
+      ? { workspace_instance_id: codeExecutionContext.codeWorkspace.workspaceInstanceId }
+      : {}),
     codeApiBaseUrl: codeExecutionContext.baseUrl,
+    maxQueueWaitMs: resolveAttachedWorkspaceQueueWaitMs(
+      codeExecutionContext.codeEnvironmentConfigSchema,
+    ),
     executionProfile: codeExecutionContext.executionProfile,
     ...(codeExecutionContext.bridgeWorkerId
       ? { bridgeWorkerId: codeExecutionContext.bridgeWorkerId }
@@ -3880,6 +3941,13 @@ async function handleAttachedWorkspaceEditFileCall({
       oldText: edit.old_text,
       newText: edit.new_text,
     }));
+    const workspaceParams = attachedWorkspaceMutationParams(
+      codeExecutionContext,
+      workspaceId,
+      req,
+      signal,
+    );
+    const queueDeadlineAt = Date.now() + workspaceParams.maxQueueWaitMs;
     let expectedBaseSha256: string | undefined;
     if (hasActiveFileFieldPolicy(req?.config?.filters, ['content', 'extracted_text'])) {
       if (!options.previewWorkspaceEdit) {
@@ -3896,7 +3964,7 @@ async function handleAttachedWorkspaceEditFileCall({
         preview = await options.previewWorkspaceEdit({
           file_path: path.filePath,
           edits: workspaceEdits,
-          ...attachedWorkspaceMutationParams(codeExecutionContext, workspaceId, req, signal),
+          ...workspaceParams,
         });
       } catch (error) {
         if (signal?.aborted === true && isAbortError(error)) throw error;
@@ -3909,12 +3977,24 @@ async function handleAttachedWorkspaceEditFileCall({
       const filteredContent = filteredFileResult(tc, req, path.filePath, preview.content);
       if (filteredContent != null) return filteredContent;
       expectedBaseSha256 = preview.baseSha256;
+      /** Zero disables retries, not the two operations required for a protected
+       * edit. Positive horizons must not restart after a successful preview. */
+      if (workspaceParams.maxQueueWaitMs > 0) {
+        const remainingMs = queueDeadlineAt - Date.now();
+        if (remainingMs <= 0) {
+          return errorResult(
+            tc,
+            'The workspace retry budget expired after preview. The file was not modified.',
+          );
+        }
+        workspaceParams.maxQueueWaitMs = remainingMs;
+      }
     }
     const result = await options.editWorkspaceFile({
       file_path: path.filePath,
       edits: workspaceEdits,
       ...(expectedBaseSha256 ? { expected_base_sha256: expectedBaseSha256 } : {}),
-      ...attachedWorkspaceMutationParams(codeExecutionContext, workspaceId, req, signal),
+      ...workspaceParams,
     });
     return successResult(
       tc,
@@ -5259,6 +5339,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
     subagentTasks,
     runFiles,
     ordinaryToolCancellation = false,
+    backgroundCompletionResultMaxChars = AGENT_BACKGROUND_COMPLETION_RESULT_MAX_CHARS_DEFAULT,
     provisionFiles,
   } = options;
 
@@ -5716,6 +5797,9 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       ...(params.status === 'cancelled' ? { cancelled: true } : {}),
                       settledAt: new Date(current?.updatedAt ?? Date.now()),
                       ...(completionPreregistered ? { completionWakeup: true } : {}),
+                      ...(completionAdmission?.persistResult != null
+                        ? { completionReceipt: true }
+                        : {}),
                       ...(current?.resultClaim != null
                         ? {
                             resultClaim: {
@@ -5736,10 +5820,40 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     task.id,
                   );
                   const backgroundTask = resolveBackgroundTask();
+                  let durableReceiptReady = false;
+                  let durableReceiptAmbiguous = false;
+                  const persistDurableReceipt = async (receipt: {
+                    status: 'completed' | 'error' | 'cancelled';
+                    output?: string;
+                  }): Promise<boolean> => {
+                    if (completionAdmission?.persistResult == null) {
+                      return false;
+                    }
+                    try {
+                      return await completionAdmission.persistResult({
+                        status: receipt.status,
+                        output: truncateMiddle(
+                          receipt.output ?? '',
+                          backgroundCompletionResultMaxChars,
+                        ),
+                        settledAt: backgroundTask.settledAt,
+                      });
+                    } catch (receiptError) {
+                      durableReceiptAmbiguous = true;
+                      logger.warn(
+                        `[background] Failed to persist independent result receipt for task ${task.id}:`,
+                        receiptError,
+                      );
+                      return false;
+                    }
+                  };
                   const retireFailedPersistence = async (
                     reason: string,
                     certainty: 'definite' | 'ambiguous',
                   ): Promise<void> => {
+                    if (durableReceiptAmbiguous) {
+                      return;
+                    }
                     if (completionAdmission == null) {
                       backgroundTaskRegistry.markCompletionPersistenceFailed(
                         backgroundUserId,
@@ -5794,6 +5908,10 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     }
                   };
                   if (!harvestEnabled || !persistBackgroundCodeResult) {
+                    durableReceiptReady = await persistDurableReceipt({
+                      status: params.status,
+                      output: params.output ?? localTask?.result,
+                    });
                     if (
                       backgroundToolCompletion == null ||
                       detachedReservation?.status === 'reserved'
@@ -5812,17 +5930,19 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         backgroundTask,
                         resolveBackgroundTask,
                       });
-                      if (!deliveryReady) {
+                      if (!deliveryReady && !durableReceiptReady) {
                         await retireFailedPersistence(
                           'background tool result was not persisted',
                           'definite',
                         );
                       }
                     } catch (persistError) {
-                      await retireFailedPersistence(
-                        'background tool result persistence failed',
-                        isContentFilterError(persistError) ? 'definite' : 'ambiguous',
-                      );
+                      if (!durableReceiptReady) {
+                        await retireFailedPersistence(
+                          'background tool result persistence failed',
+                          isContentFilterError(persistError) ? 'definite' : 'ambiguous',
+                        );
+                      }
                       logger.warn(
                         `[background] Failed to persist result for task ${task.id}:`,
                         persistError,
@@ -5864,13 +5984,19 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                         task.id,
                         params.artifact,
                       );
-                      if (completionPreregistered) {
+                      if (completionPreregistered && !durableReceiptReady) {
                         await retireFailedPersistence(
                           'background code result had no durable message anchor',
                           'definite',
                         );
                       }
                       return;
+                    }
+                    if (persisted.deliveryReady !== false) {
+                      durableReceiptReady = await persistDurableReceipt({
+                        status: params.status,
+                        output: params.output ?? localTask?.result,
+                      });
                     }
                     if (persisted.deliveryReady === false) {
                       await retireFailedPersistence(
@@ -5885,25 +6011,37 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       persisted.attachments,
                     );
                   } catch (persistError) {
-                    if (completionPreregistered) {
-                      await retireFailedPersistence(
-                        'background code result persistence failed',
-                        isContentFilterError(persistError) ? 'definite' : 'ambiguous',
-                      );
-                    }
                     if (isContentFilterError(persistError)) {
+                      const blockedMessage =
+                        persistError instanceof ContentFilterError
+                          ? modelBoundContentFilterErrorMessage(persistError.body)
+                          : persistError.body.message;
                       backgroundTaskRegistry.blockArtifact(
                         backgroundUserId,
                         backgroundConversationId,
                         task.id,
-                        persistError instanceof ContentFilterError
-                          ? modelBoundContentFilterErrorMessage(persistError.body)
-                          : persistError.body.message,
+                        blockedMessage,
                       );
+                      durableReceiptReady = await persistDurableReceipt({
+                        status: 'error',
+                        output: blockedMessage,
+                      });
+                      if (completionPreregistered && !durableReceiptReady) {
+                        await retireFailedPersistence(
+                          'background code result was blocked by content policy',
+                          'definite',
+                        );
+                      }
                       logger.warn(
                         `[background] Generated code output for task ${task.id} was blocked by content policy.`,
                       );
                       return;
+                    }
+                    if (completionPreregistered && !durableReceiptReady) {
+                      await retireFailedPersistence(
+                        'background code result persistence failed',
+                        'ambiguous',
+                      );
                     }
                     logger.warn(
                       `[background] Failed to persist code result for task ${task.id}:`,
@@ -5953,6 +6091,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       signal: backgroundAbortController.signal,
                       configurable: {
                         ...mergedConfigurable,
+                        [BACKGROUND_TOOL_INVOCATION_CONFIG_KEY]: true,
                         ...(detachedReservation?.status === 'reserved'
                           ? {
                               eventActorDetachedAction: {
@@ -6024,6 +6163,10 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                           .renew()
                           .then((renewed) => {
                             if (!renewed) {
+                              producerHeartbeatStopped = true;
+                              if (producerHeartbeat != null) {
+                                clearInterval(producerHeartbeat);
+                              }
                               logger.warn(
                                 `[background] Completion producer lease was not renewed for task ${task.id}.`,
                               );
@@ -6192,7 +6335,16 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       toolError instanceof ContentFilterError
                         ? modelBoundContentFilterErrorMessage(toolError.body)
                         : null;
-                    const { message } = getSafeToolError(toolError);
+                    const { message, logContext } = getSafeToolError(
+                      toolError,
+                      toolValidationFeedback(
+                        toolError,
+                        tc.name,
+                        tool.schema,
+                        normalizedArgs,
+                        backgroundControlEnabled,
+                      ),
+                    );
                     const errorOutput = policyError ?? message;
                     const filteredError =
                       policyError == null
@@ -6205,6 +6357,14 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                           })
                         : null;
                     const neutralizedError = filteredError?.errorMessage ?? errorOutput;
+                    if (policyError == null && filteredError == null) {
+                      logger.debug('[background] Tool failed', {
+                        ...logContext,
+                        toolName: tc.name,
+                        toolCallId: tc.id,
+                        backgroundTaskId: task.id,
+                      });
+                    }
                     const deliveredError = toBackgroundToolFailure(tc.name, neutralizedError);
                     const registryError = isCodeCall ? deliveredError : neutralizedError;
                     /** Only an owner-authorized request is cancellation evidence.
@@ -6650,13 +6810,15 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       });
                       if (filteredError != null) {
                         logger.error(`[ON_TOOL_EXECUTE] Tool ${tc.name} error`, {
-                          name: logContext.name,
+                          errorName: logContext.errorName,
                           contentFiltered: true,
                         });
                         return filteredError;
                       }
                       const context = {
                         ...logContext,
+                        toolName: tc.name,
+                        toolCallId: tc.id,
                         toolCallArgsShape: getValueShape(tc.args),
                       };
                       if (runSignal?.aborted === true && isAbortError(toolError)) {
@@ -6794,6 +6956,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     return missingToolResult;
                   }
 
+                  let normalizedArgs: unknown = tc.args;
                   try {
                     const toolCallConfig = buildToolCallConfig(tc, mergedConfigurable);
 
@@ -6914,7 +7077,7 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       (hasRunInBackgroundArg(tc.args) && !toolDeclaresRunInBackgroundParam(tool))
                         ? stripRunInBackgroundArg(tc.args)
                         : tc.args;
-                    const normalizedArgs = normalizeToolInvokeArgs(
+                    normalizedArgs = normalizeToolInvokeArgs(
                       stripIntentForInvoke(foregroundArgs, tool),
                       tool,
                     );
@@ -7034,7 +7197,16 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                       });
                       return errorResult(tc, modelBoundContentFilterErrorMessage(toolError.body));
                     }
-                    const { message, logContext } = getSafeToolError(toolError);
+                    const { message, logContext } = getSafeToolError(
+                      toolError,
+                      toolValidationFeedback(
+                        toolError,
+                        tc.name,
+                        tool.schema,
+                        normalizedArgs,
+                        backgroundControlEnabled,
+                      ),
+                    );
                     /** A user Stop rejects every in-flight call at once. That is
                      *  the abort working, not a fault, so it is logged at debug.
                      *  An aborted run says the turn is over, not that THIS
@@ -7062,13 +7234,15 @@ export function createToolExecuteHandler(options: ToolExecuteOptions): EventHand
                     });
                     if (filteredError != null) {
                       logToolFailure({
-                        name: logContext.name,
+                        errorName: logContext.errorName,
                         contentFiltered: true,
                       });
                       return filteredError;
                     }
                     logToolFailure({
                       ...logContext,
+                      toolName: tc.name,
+                      toolCallId: tc.id,
                       toolCallArgsShape: getValueShape(tc.args),
                       toolInputSchemaKind: getToolInputSchemaKind(tool),
                     });

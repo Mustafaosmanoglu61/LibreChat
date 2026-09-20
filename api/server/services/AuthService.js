@@ -268,9 +268,9 @@ const sendVerificationEmail = async (user) => {
   }/verify?token=${verifyToken}&email=${encodeURIComponent(email)}`;
   await sendEmail({
     email,
-    subject: 'E-posta adresinizi doğrulayın',
+    subject: 'Verify your email',
     payload: {
-      appName: process.env.APP_TITLE || 'Medical Chat',
+      appName: process.env.APP_TITLE || 'LibreChat',
       name: user.name || user.username || email,
       verificationLink: verificationLink,
       year: new Date().getFullYear(),
@@ -537,9 +537,9 @@ const requestPasswordReset = async (req) => {
   if (emailEnabled) {
     await sendEmail({
       email: user.email,
-      subject: 'Şifre sıfırlama talebi',
+      subject: 'Password Reset Request',
       payload: {
-        appName: process.env.APP_TITLE || 'Medical Chat',
+        appName: process.env.APP_TITLE || 'LibreChat',
         name: user.name || user.username || user.email,
         link: link,
         year: new Date().getFullYear(),
@@ -588,9 +588,9 @@ const resetPassword = async (userId, token, password) => {
   if (checkEmailConfig()) {
     await sendEmail({
       email: user.email,
-      subject: 'Şifreniz güncellendi',
+      subject: 'Password Reset Successfully',
       payload: {
-        appName: process.env.APP_TITLE || 'Medical Chat',
+        appName: process.env.APP_TITLE || 'LibreChat',
         name: user.name || user.username || user.email,
         year: new Date().getFullYear(),
       },
@@ -977,9 +977,9 @@ const resendVerificationEmail = async (req) => {
 
     await sendEmail({
       email: user.email,
-      subject: 'E-posta adresinizi doğrulayın',
+      subject: 'Verify your email',
       payload: {
-        appName: process.env.APP_TITLE || 'Medical Chat',
+        appName: process.env.APP_TITLE || 'LibreChat',
         name: user.name || user.username || user.email,
         verificationLink: verificationLink,
         year: new Date().getFullYear(),

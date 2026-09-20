@@ -25,9 +25,10 @@ function formatBuildDate(raw: string | null | undefined): string {
 function buildDiagnosticsBlob(
   version: string,
   buildInfo: TStartupConfig['buildInfo'] | undefined,
+  appTitle: string,
 ): string {
   const lines: string[] = [
-    `Medical Chat version: ${version}`,
+    `${appTitle} version: ${version}`,
     `Commit: ${buildInfo?.commit ?? UNKNOWN_PLACEHOLDER}`,
     `Branch: ${buildInfo?.branch ?? UNKNOWN_PLACEHOLDER}`,
     `Build date: ${formatBuildDate(buildInfo?.buildDate)}`,
@@ -55,8 +56,8 @@ function About() {
   const version: string = Constants.VERSION;
 
   const diagnosticsBlob = useMemo(
-    () => buildDiagnosticsBlob(version, buildInfo),
-    [version, buildInfo],
+    () => buildDiagnosticsBlob(version, buildInfo, startupConfig?.appTitle ?? ''),
+    [version, buildInfo, startupConfig?.appTitle],
   );
 
   useEffect(

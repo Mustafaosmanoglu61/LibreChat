@@ -624,7 +624,7 @@ export default function InsightsView() {
   );
   const displayedAgentIds = pendingAgentIds ?? effectiveAgentIds;
 
-  useDocumentTitle(`${localize('com_insights_title')} | Medical Chat`);
+  useDocumentTitle(`${localize('com_insights_title')} | ${startupConfig?.appTitle ?? ''}`);
 
   useEffect(
     () => () => {

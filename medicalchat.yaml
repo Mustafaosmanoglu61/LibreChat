@@ -67,3 +67,22 @@ endpoints:
       titleConvo: true
       titleModel: 'kimi-k2-turbo-preview'
       modelDisplayLabel: 'Kimi'
+
+# Massive.com piyasa verisi — kurumun API anahtarıyla, uygulama konteynerinin
+# içinde stdio olarak çalışır; ayrı bir servis gerektirmez. Barındırılan
+# mcp.massive.com yalnızca OAuth JWT kabul ettiği için anahtarlı yol budur.
+# İlk bağlantıda bağımlılıklar indirildiğinden başlatma süresi uzun tutuldu.
+mcpServers:
+  massive:
+    type: stdio
+    title: 'ABD Borsa (API anahtarı)'
+    description: 'Massive.com piyasa verisi — kurumun API anahtarıyla'
+    command: uvx
+    args:
+      - '--from'
+      - 'mcp_massive @ git+https://github.com/massive-com/mcp_massive@v0.10.0'
+      - 'mcp_massive'
+    env:
+      MASSIVE_API_KEY: '${MASSIVE_API_KEY}'
+    initTimeout: 180000
+    timeout: 120000

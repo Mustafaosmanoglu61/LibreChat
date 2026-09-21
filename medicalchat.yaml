@@ -72,6 +72,7 @@ endpoints:
 # içinde stdio olarak çalışır; ayrı bir servis gerektirmez. Barındırılan
 # mcp.massive.com yalnızca OAuth JWT kabul ettiği için anahtarlı yol budur.
 # Konteynerde git olmadığı için kaynak git deposu değil sürüm arşivi.
+# v0.10.0 mcp'yi üst sınırsız istiyor; mcp 2.x FastMCP'yi kaldırdığı için 1.x'e sabitlendi.
 # İlk bağlantıda bağımlılıklar indirildiğinden başlatma süresi uzun tutuldu.
 mcpServers:
   massive:
@@ -80,6 +81,8 @@ mcpServers:
     description: 'Massive.com piyasa verisi — kurumun API anahtarıyla'
     command: uvx
     args:
+      - '--with'
+      - 'mcp>=1.27,<2'
       - '--from'
       - 'mcp_massive @ https://github.com/massive-com/mcp_massive/archive/refs/tags/v0.10.0.tar.gz'
       - 'mcp_massive'

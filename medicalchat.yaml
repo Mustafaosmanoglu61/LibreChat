@@ -75,7 +75,7 @@ endpoints:
 mcpServers:
   massive:
     type: stdio
-    title: 'ABD Borsa (API anahtarı)'
+    title: 'ABD Borsa - API anahtarı'
     description: 'Massive.com piyasa verisi — kurumun API anahtarıyla'
     command: uvx
     args:

@@ -90,3 +90,20 @@ mcpServers:
       MASSIVE_API_KEY: '${MASSIVE_API_KEY}'
     initTimeout: 180000
     timeout: 120000
+
+# Hafıza — test aşaması: validKeys ile anahtar kısıtı koymadık, model her şeyi
+# saklayabilir. Otomatik çıkarım için şema sabit bir model istiyor (sohbetin
+# kendi modelini kullanan bir mod yok); bu model yalnızca hafıza çıkarımında
+# kullanılır, sohbetlerin modelini etkilemez.
+memory:
+  disabled: false
+  personalize: true
+  tokenLimit: 10000
+  messageWindowSize: 5
+  agent:
+    enabled: true
+    provider: 'openAI'
+    model: 'gpt-4.1-mini'
+    instructions: 'Kullanıcı hakkında sonraki sohbetlerde işe yarayacak kalıcı bilgileri sakla: tercihleri, sorumlu olduğu işler, çalıştığı sistemler, süregelen konular. Tek seferlik soruları ve geçici ayrıntıları saklama. Kullanıcının dilinde yaz.'
+    model_parameters:
+      temperature: 0.1

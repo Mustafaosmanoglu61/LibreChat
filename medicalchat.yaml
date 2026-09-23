@@ -75,6 +75,22 @@ endpoints:
 # v0.10.0 mcp'yi üst sınırsız istiyor; mcp 2.x FastMCP'yi kaldırdığı için 1.x'e sabitlendi.
 # İlk bağlantıda bağımlılıklar indirildiğinden başlatma süresi uzun tutuldu.
 mcpServers:
+  # PubMed / Europe PMC literatür araması. npm paketi, konteyner içinde stdio.
+  # Sorgular doğrudan NCBI'ya gider; aracı bir servis yok.
+  # NCBI anahtarı isteğe bağlı: yoksa 3 istek/sn, varsa 10 istek/sn.
+  pubmed:
+    type: stdio
+    title: 'PubMed literatür'
+    description: 'PubMed ve Europe PMC üzerinde makale arama, tam metin ve atıf bilgisi'
+    command: npx
+    args:
+      - '-y'
+      - '@cyanheads/pubmed-mcp-server@2.10.18'
+    env:
+      MCP_TRANSPORT_TYPE: 'stdio'
+    initTimeout: 180000
+    timeout: 120000
+
   massive:
     type: stdio
     title: 'ABD Borsa - API anahtarı'

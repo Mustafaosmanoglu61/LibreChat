@@ -13,6 +13,15 @@ interface:
   bookmarks: true
   multiConvo: true
   agents: true
+  # Zamanlanmış sohbetler (deneysel, yukarı akışta varsayılan kapalı). Tek süreçte
+  # çalışıyoruz ve SCHEDULES_SINGLE_PROCESS=true ayarlı, bu yüzden zamanlayıcı
+  # güvenle kurulabiliyor.
+  schedules:
+    use: true
+    create: true
+    maxPerUser: 10
+    minIntervalMinutes: 60
+    autoDisableAfterFailures: 5
 
 # Web araması — anahtarsız yığın. Keenable'ın herkese açık uçları hız sınırlı;
 # anahtar yalnızca bu sınırı yükseltir, çalışması için gerekli değil.

@@ -15,6 +15,7 @@ import type {
   SummarizationConfig,
   SkillSyncConfig,
   FiltersConfig,
+  TConnectionsConfig,
 } from 'librechat-data-provider';
 
 export type JsonSchemaType = {
@@ -70,6 +71,8 @@ export interface AppConfig {
   messageFilter?: TCustomConfig['messageFilter'];
   /** Langfuse tracing configuration */
   langfuse?: TCustomConfig['langfuse'];
+  /** Per-user provider connections (users chat on their own provider account) */
+  connections?: TConnectionsConfig;
   /** Skill sync configuration */
   skillSync?: SkillSyncConfig;
   /** File storage strategy ('local', 's3', 'firebase', 'azure_blob', 'cloudfront') */

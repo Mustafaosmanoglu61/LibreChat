@@ -50,6 +50,8 @@ export * from './html';
 /* OAuth */
 export * from './oauth';
 export * from './mcp/oauth/OAuthReconnectionManager';
+/* Provider connections */
+export * from './connections';
 /* Crypto */
 export * from './crypto';
 /* Flow */

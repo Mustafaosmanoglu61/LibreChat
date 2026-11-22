@@ -223,6 +223,7 @@ const { getAccessibleMCPServers } = require('~/server/services/MCP');
 const BaseClient = require('~/app/clients/BaseClient');
 const { getMCPManager } = require('~/config');
 const db = require('~/models');
+const { resolveConnection } = require('~/server/services/Connections');
 
 const loadAgent = (params) =>
   loadAgentFn(params, {
@@ -1013,7 +1014,7 @@ class AgentClient extends BaseClient {
           conversationId: this.conversationId,
           parentMessageId: this.parentMessageId,
         },
-        db: { getUserKey: db.getUserKey, getUserKeyValues: db.getUserKeyValues },
+        db: { getUserKey: db.getUserKey, getUserKeyValues: db.getUserKeyValues, resolveConnection },
       }).catch((error) => {
         /** Never cache a rejection: a transient credential read failure would
          *  otherwise disable labels for the rest of the response. */
@@ -1036,7 +1037,7 @@ class AgentClient extends BaseClient {
           conversationId: this.conversationId,
           parentMessageId: this.parentMessageId,
         },
-        db: { getUserKey: db.getUserKey, getUserKeyValues: db.getUserKeyValues },
+        db: { getUserKey: db.getUserKey, getUserKeyValues: db.getUserKeyValues, resolveConnection },
       }).catch((error) => {
         this.activityPhaseLabelLLMPromise = null;
         throw error;
@@ -1057,7 +1058,7 @@ class AgentClient extends BaseClient {
           conversationId: this.conversationId,
           parentMessageId: this.parentMessageId,
         },
-        db: { getUserKey: db.getUserKey, getUserKeyValues: db.getUserKeyValues },
+        db: { getUserKey: db.getUserKey, getUserKeyValues: db.getUserKeyValues, resolveConnection },
       }).catch((error) => {
         this.reasoningLabelLLMPromise = null;
         throw error;
@@ -3331,6 +3332,7 @@ class AgentClient extends BaseClient {
         getAccessibleMcpServerNames,
         updateFilesUsage: db.updateFilesUsage,
         getUserKeyValues: db.getUserKeyValues,
+        resolveConnection,
         getToolFilesByIds: db.getToolFilesByIds,
         getCodeGeneratedFiles: db.getCodeGeneratedFiles,
         filterFilesByAgentAccess,
@@ -6035,6 +6037,7 @@ class AgentClient extends BaseClient {
       db: {
         getUserKey: db.getUserKey,
         getUserKeyValues: db.getUserKeyValues,
+        resolveConnection,
       },
     });
 

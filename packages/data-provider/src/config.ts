@@ -2846,6 +2846,25 @@ export const langfuseTraceConfigSchema = z.object({
 
 export type LangfuseTraceConfig = z.infer<typeof langfuseTraceConfigSchema>;
 
+/**
+ * Per-user provider connections: an endpoint listed under a provider is served with the
+ * signed-in user's own account (e.g. their ChatGPT plan) instead of an operator API key.
+ * Omitted or `enabled: false` reproduces the behavior from before connections existed.
+ */
+export const connectionProviderSchema = z.object({
+  /** LibreChat endpoint names this provider serves. */
+  endpoints: z.array(z.string().min(1)).min(1),
+});
+
+export const connectionsSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Refresh this far ahead of expiry so a streamed turn does not outlive its token. */
+  refreshLeadMs: z.number().int().min(0).max(600_000).default(120_000),
+  providers: z.record(connectionProviderSchema).default({}),
+});
+
+export type TConnectionsConfig = z.infer<typeof connectionsSchema>;
+
 export const langfuseConfigSchema = z.object({
   enabled: z.boolean().optional(),
   publicKey: z.string().optional(),
@@ -2899,6 +2918,7 @@ export const configSchema = z.object({
   ocr: ocrSchema.optional(),
   webSearch: webSearchSchema.optional(),
   langfuse: langfuseConfigSchema.optional(),
+  connections: connectionsSchema.optional(),
   memory: memorySchema.optional(),
   summarization: summarizationConfigSchema.optional(),
   skillSync: skillSyncConfigSchema,
@@ -3649,6 +3669,14 @@ export enum ErrorTypes {
    * Invalid User-provided Key.
    */
   INVALID_USER_KEY = 'invalid_user_key',
+  /**
+   * Endpoint is served by a user's own provider connection, and the user has not connected.
+   */
+  NO_CONNECTION = 'no_connection',
+  /**
+   * The user's provider connection can no longer be refreshed; they must reconnect.
+   */
+  CONNECTION_EXPIRED = 'connection_expired',
   /**
    * No Base URL Provided.
    */

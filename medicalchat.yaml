@@ -51,6 +51,16 @@ langfuse:
 # Ek model sağlayıcıları. İkisi de OpenAI uyumlu API sunduğu için varsayılan
 # istemci kullanılıyor. `fetch: true` model listesini sağlayıcıdan canlı çeker;
 # anahtar tanımlı değilse `default` listesine düşer.
+# Kullanıcı bağlantıları — listelenen endpoint'ler operatör anahtarı yerine
+# giriş yapan kullanıcının kendi hesabıyla çalışır. Bağlantı yerel makinede
+# `node scripts/siwc-login.mjs` ile alınır, `node scripts/siwc-connect.mjs` ile
+# sunucuya aktarılır; sunucu token'ı süresi dolmadan kendisi yeniler.
+connections:
+  enabled: true
+  providers:
+    chatgpt:
+      endpoints: ['ChatGPT']
+
 endpoints:
   custom:
     - name: 'DeepSeek'
@@ -76,6 +86,33 @@ endpoints:
       titleConvo: true
       titleModel: 'kimi-k2-turbo-preview'
       modelDisplayLabel: 'Kimi'
+
+    # Kullanıcının kendi ChatGPT planı — API anahtarı yok. Kimlik bilgisi her
+    # kullanıcının "connections" altındaki bağlantısından gelir; apiKey alanı
+    # yalnızca endpoint'in geçerli sayılması için bir yer tutucu.
+    # Bu token yalnızca Responses API'yi ve store:false'u kabul ediyor.
+    - name: 'ChatGPT'
+      apiKey: 'connection'
+      baseURL: 'https://api.openai.com/v1'
+      models:
+        default:
+          - 'gpt-6.2-sol'
+          - 'gpt-6.2-astra'
+          - 'gpt-6.1-sol'
+          - 'gpt-6.1-terra'
+          - 'gpt-6-sol'
+          - 'gpt-6-astra'
+          - 'gpt-6-luna'
+          - 'gpt-5.6-sol'
+          - 'gpt-5.6-terra'
+          - 'gpt-5.6-luna'
+        fetch: false
+      titleConvo: true
+      titleModel: 'gpt-5.6-luna'
+      modelDisplayLabel: 'ChatGPT'
+      addParams:
+        useResponsesApi: true
+        store: false
 
 # Massive.com piyasa verisi — kurumun API anahtarıyla, uygulama konteynerinin
 # içinde stdio olarak çalışır; ayrı bir servis gerektirmez. Barındırılan

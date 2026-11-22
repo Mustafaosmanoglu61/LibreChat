@@ -201,8 +201,16 @@ export async function initializeCustom(
     throw new Error(`Missing Base URL for ${endpoint}.`);
   }
 
-  const userProvidesKey = isUserProvided(CUSTOM_API_KEY);
-  const userProvidesURL = isUserProvided(CUSTOM_BASE_URL);
+  const connection = await db.resolveConnection?.({
+    userId: user?.id ?? '',
+    endpoint,
+    config: appConfig?.connections,
+  });
+
+  const userProvidesKey = connection == null && isUserProvided(CUSTOM_API_KEY);
+  /** A connection states whether its URL is admin-derived; header and SSRF guards key off this. */
+  const userProvidesURL =
+    connection != null ? !connection.trustedBaseURL : isUserProvided(CUSTOM_BASE_URL);
 
   // Expiry is only checked when present: the Agents API sends an OpenAI-compatible
   // request body that does not include `key` (the expiry timestamp), so expiresAt
@@ -212,12 +220,14 @@ export async function initializeCustom(
   }
 
   let userValues = null;
-  if (userProvidesKey || userProvidesURL) {
+  if (connection == null && (userProvidesKey || userProvidesURL)) {
     userValues = await db.getUserKeyValues({ userId: user?.id ?? '', name: endpoint });
   }
 
-  const apiKey = userProvidesKey || userProvidesURL ? userValues?.apiKey : CUSTOM_API_KEY;
-  const baseURL = userProvidesURL ? userValues?.baseURL : CUSTOM_BASE_URL;
+  const apiKey =
+    connection?.apiKey ??
+    (userProvidesKey || userProvidesURL ? userValues?.apiKey : CUSTOM_API_KEY);
+  const baseURL = connection?.baseURL ?? (userProvidesURL ? userValues?.baseURL : CUSTOM_BASE_URL);
 
   if ((userProvidesKey || userProvidesURL) && !apiKey) {
     throw new Error(

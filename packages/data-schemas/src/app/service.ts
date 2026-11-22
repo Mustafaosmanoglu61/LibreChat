@@ -5,6 +5,7 @@ import {
   hasActiveFiltersConfig,
   getConfigDefaults,
   langfuseConfigSchema,
+  connectionsSchema,
   skillSyncConfigSchema,
   summarizationConfigSchema,
 } from 'librechat-data-provider';
@@ -91,6 +92,23 @@ export function loadLangfuseConfig(config: DeepPartial<TCustomConfig>): AppConfi
   return parsed.data;
 }
 
+export function loadConnectionsConfig(
+  config: DeepPartial<TCustomConfig>,
+): AppConfig['connections'] {
+  const raw = config.connections;
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+
+  const parsed = connectionsSchema.safeParse(raw);
+  if (!parsed.success) {
+    logger.warn('[AppService] Invalid connections config', parsed.error.flatten());
+    return undefined;
+  }
+
+  return parsed.data;
+}
+
 export function loadFiltersConfig(config: DeepPartial<TCustomConfig>): AppConfig['filters'] {
   const raw = config.filters;
   if (raw === undefined) {
@@ -169,6 +187,7 @@ export const AppService = async (params?: {
   const filters = loadFiltersConfig(config);
   const messageFilter = config.messageFilter;
   const langfuse = loadLangfuseConfig(config);
+  const connections = loadConnectionsConfig(config);
 
   const defaultConfig = {
     ocr,
@@ -188,6 +207,7 @@ export const AppService = async (params?: {
     includedTools,
     filters,
     langfuse,
+    connections,
     messageFilter,
     summarization,
     availableTools,

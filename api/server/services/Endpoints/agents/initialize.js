@@ -100,6 +100,7 @@ const {
 } = require('./backgroundCompletion');
 const { logViolation } = require('~/cache');
 const db = require('~/models');
+const { resolveConnection } = require('~/server/services/Connections');
 const { getAppConfig } = require('~/server/services/Config');
 const { getStrategyFunctions } = require('~/server/services/Files/strategies');
 const { encodeAndFormat } = require('~/server/services/Files/images/encode');
@@ -746,6 +747,7 @@ const initializeClientWithProvider = async ({
       getAccessibleMcpServerNames,
       updateFilesUsage: db.updateFilesUsage,
       getUserKeyValues: db.getUserKeyValues,
+      resolveConnection,
       getUserCodeFiles: db.getUserCodeFiles,
       getDeferredProvisionFiles: db.getDeferredProvisionFiles,
       getToolFilesByIds: db.getToolFilesByIds,
@@ -838,6 +840,7 @@ const initializeClientWithProvider = async ({
         getAccessibleMcpServerNames,
         updateFilesUsage: db.updateFilesUsage,
         getUserKeyValues: db.getUserKeyValues,
+        resolveConnection,
         getUserCodeFiles: db.getUserCodeFiles,
         getDeferredProvisionFiles: db.getDeferredProvisionFiles,
         getToolFilesByIds: db.getToolFilesByIds,
@@ -1323,6 +1326,7 @@ const initializeClientWithProvider = async ({
           getAccessibleMcpServerNames,
           updateFilesUsage: db.updateFilesUsage,
           getUserKeyValues: db.getUserKeyValues,
+          resolveConnection,
           getUserCodeFiles: db.getUserCodeFiles,
           getDeferredProvisionFiles: db.getDeferredProvisionFiles,
           getToolFilesByIds: db.getToolFilesByIds,

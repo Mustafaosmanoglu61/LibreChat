@@ -702,3 +702,119 @@ describe('initializeCustom – native Anthropic provider', () => {
     expect(options.provider).toBeUndefined();
   });
 });
+
+describe('initializeCustom – provider connection resolution', () => {
+  const connections = {
+    enabled: true,
+    refreshLeadMs: 120_000,
+    providers: { chatgpt: { endpoints: ['test-custom'] } },
+  };
+
+  function withConnection(
+    params: BaseInitializeParams,
+    resolved: { apiKey: string; baseURL?: string; trustedBaseURL: boolean } | null | Error,
+  ) {
+    const resolveConnection = jest.fn(() =>
+      resolved instanceof Error ? Promise.reject(resolved) : Promise.resolve(resolved),
+    );
+    Object.assign(params.db, { resolveConnection });
+    Object.assign(params.req as unknown as { config: Record<string, unknown> }, {
+      config: { connections },
+    });
+    return resolveConnection;
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('chats with the connection credential and never reads a pasted user key', async () => {
+    const params = createParams({ apiKey: 'connection', baseURL: 'https://api.openai.com/v1' });
+    const resolveConnection = withConnection(params, {
+      apiKey: 'user-chatgpt-token',
+      baseURL: 'https://api.openai.com/v1',
+      trustedBaseURL: true,
+    });
+
+    await initializeCustom(params);
+
+    expect(resolveConnection).toHaveBeenCalledWith({
+      userId: 'user-1',
+      endpoint: 'test-custom',
+      config: connections,
+    });
+    expect(params.db.getUserKeyValues).not.toHaveBeenCalled();
+    expect(mockGetOpenAIConfig).toHaveBeenCalledWith(
+      'user-chatgpt-token',
+      expect.objectContaining({ reverseProxyUrl: 'https://api.openai.com/v1' }),
+      'test-custom',
+    );
+  });
+
+  it('wins over a user_provided key setting, so the user is never asked to paste one', async () => {
+    const params = createParams({ apiKey: AuthType.USER_PROVIDED });
+    withConnection(params, { apiKey: 'user-chatgpt-token', trustedBaseURL: true });
+
+    await initializeCustom(params);
+
+    expect(params.db.getUserKeyValues).not.toHaveBeenCalled();
+    expect(mockGetOpenAIConfig.mock.calls[0][0]).toBe('user-chatgpt-token');
+  });
+
+  it('forwards admin headers and skips the SSRF check for an admin-derived connection URL', async () => {
+    const headers = { 'X-Env-Secret': '${GATEWAY_SECRET}' };
+    const params = createParams({ apiKey: 'connection', headers });
+    withConnection(params, {
+      apiKey: 'user-chatgpt-token',
+      baseURL: 'https://api.openai.com/v1',
+      trustedBaseURL: true,
+    });
+
+    await initializeCustom(params);
+
+    const clientOptions = mockGetOpenAIConfig.mock.calls[0][1] as {
+      headers?: Record<string, string>;
+    };
+    expect(clientOptions.headers).toEqual(headers);
+    expect(mockValidateEndpointURL).not.toHaveBeenCalled();
+  });
+
+  it('withholds admin headers and runs the SSRF check when the connection URL is not trusted', async () => {
+    const params = createParams({ apiKey: 'connection', headers: { 'X-Env-Secret': '${S}' } });
+    withConnection(params, {
+      apiKey: 'user-token',
+      baseURL: 'https://user-controlled.example.com/v1',
+      trustedBaseURL: false,
+    });
+
+    await initializeCustom(params);
+
+    const clientOptions = mockGetOpenAIConfig.mock.calls[0][1] as {
+      headers?: Record<string, string>;
+    };
+    expect(clientOptions.headers).toBeUndefined();
+    expect(mockValidateEndpointURL).toHaveBeenCalledWith(
+      'https://user-controlled.example.com/v1',
+      'test-custom',
+      undefined,
+    );
+  });
+
+  it('keeps the existing key resolution when no connection serves the endpoint', async () => {
+    const params = createParams({ apiKey: AuthType.USER_PROVIDED, userApiKey: 'sk-pasted' });
+    withConnection(params, null);
+
+    await initializeCustom(params);
+
+    expect(params.db.getUserKeyValues).toHaveBeenCalled();
+    expect(mockGetOpenAIConfig.mock.calls[0][0]).toBe('sk-pasted');
+  });
+
+  it('surfaces a missing connection to the client instead of falling back to a key', async () => {
+    const params = createParams({ apiKey: 'connection' });
+    withConnection(params, new Error(JSON.stringify({ type: ErrorTypes.NO_CONNECTION })));
+
+    await expect(initializeCustom(params)).rejects.toThrow(ErrorTypes.NO_CONNECTION);
+    expect(mockGetOpenAIConfig).not.toHaveBeenCalled();
+  });
+});

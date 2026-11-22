@@ -1,6 +1,7 @@
 import type { ClientOptions, OpenAIClientOptions } from '@librechat/agents';
+import type { TConfig, TConnectionsConfig } from 'librechat-data-provider';
 import type { AppConfig, IUser } from '@librechat/data-schemas';
-import type { TConfig } from 'librechat-data-provider';
+import type { ResolvedCredential } from '~/connections/types';
 import type { RequestBody, ServerRequest } from './http';
 import type { EndpointTokenConfig } from './tokens';
 import type { AzureOptions } from './azure';
@@ -37,7 +38,18 @@ export interface EndpointDbMethods {
   getUserKey: GetUserKeyFunction;
   /** Get parsed key values object (used for apiKey + baseURL combinations) */
   getUserKeyValues: GetUserKeyValuesFunction;
+  /**
+   * Credential from the user's own provider connection. Resolves null for endpoints no
+   * connection serves; absent entirely on deployments that do not wire connections.
+   */
+  resolveConnection?: ResolveConnectionFunction;
 }
+
+export type ResolveConnectionFunction = (params: {
+  userId: string;
+  endpoint: string;
+  config: TConnectionsConfig | undefined;
+}) => Promise<ResolvedCredential | null>;
 
 /** Transport-free state consumed while resolving provider credentials and configuration. */
 export interface EndpointRuntimeContext {

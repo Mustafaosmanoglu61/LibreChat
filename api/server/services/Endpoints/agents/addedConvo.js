@@ -14,6 +14,7 @@ const { getAccessibleMcpServerNames, getAccessibleMCPServers } = require('~/serv
 const { isFatalAgentInitializationError } = require('~/server/services/ToolService');
 const { getSkillDbMethods, canAuthorSkillFiles } = require('./skillDeps');
 const db = require('~/models');
+const { resolveConnection } = require('~/server/services/Connections');
 
 const loadAddedAgent = (params) =>
   loadAddedAgentFn(params, {
@@ -213,6 +214,7 @@ const processAddedConvo = async ({
         updateFilesUsage: db.updateFilesUsage,
         getUserCodeFiles: db.getUserCodeFiles,
         getUserKeyValues: db.getUserKeyValues,
+        resolveConnection,
         getToolFilesByIds: db.getToolFilesByIds,
         getCodeGeneratedFiles: db.getCodeGeneratedFiles,
         filterFilesByAgentAccess,

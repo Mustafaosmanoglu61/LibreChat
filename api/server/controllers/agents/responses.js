@@ -121,6 +121,7 @@ const { resolveConversationTitle } = require('~/server/services/Endpoints/titleP
 const { getMCPManager } = require('~/config');
 const { logViolation } = require('~/cache');
 const db = require('~/models');
+const { resolveConnection } = require('~/server/services/Connections');
 
 const filterFilesByRemoteAgentAccess = (params) =>
   filterFilesByAgentAccess({ ...params, resourceType: ResourceType.REMOTE_AGENT });
@@ -768,6 +769,7 @@ const executeResponse = async (envelope, { req, res }) => {
         getAccessibleMcpServerNames,
         updateFilesUsage: db.updateFilesUsage,
         getUserKeyValues: db.getUserKeyValues,
+        resolveConnection,
         getUserCodeFiles: db.getUserCodeFiles,
         getDeferredProvisionFiles: db.getDeferredProvisionFiles,
         checkSessionsAlive,

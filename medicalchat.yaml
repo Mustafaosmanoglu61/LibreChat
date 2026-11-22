@@ -107,12 +107,20 @@ endpoints:
           - 'gpt-5.6-terra'
           - 'gpt-5.6-luna'
         fetch: false
-      titleConvo: true
-      titleModel: 'gpt-5.6-luna'
+      # ChatGPT plan hattı yalnızca stream istekleri kabul ediyor; başlık isteği stream değil.
+      titleConvo: false
       modelDisplayLabel: 'ChatGPT'
       addParams:
         useResponsesApi: true
         store: false
+      # Plan hattı bu parametreleri 400 "Unsupported parameter" ile reddediyor.
+      dropParams:
+        - 'user'
+        - 'temperature'
+        - 'top_p'
+        - 'frequency_penalty'
+        - 'presence_penalty'
+        - 'stop'
 
 # Massive.com piyasa verisi — kurumun API anahtarıyla, uygulama konteynerinin
 # içinde stdio olarak çalışır; ayrı bir servis gerektirmez. Barındırılan

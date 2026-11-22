@@ -28,6 +28,7 @@ const MAX_TOKEN_LENGTH = 16_384;
 const DEFAULT_EXPIRES_IN = 3600;
 
 interface TokenClaims {
+  exp?: number;
   email?: string;
   scp?: string[];
   'https://api.openai.com/auth'?: { chatgpt_plan_type?: string; chatgpt_account_id?: string };
@@ -47,6 +48,18 @@ function readClaims(jwt: string | undefined): TokenClaims {
   } catch {
     return {};
   }
+}
+
+/**
+ * Seconds the access token has left. A transferred token may have been issued long
+ * before upload, so its own `exp` wins over `expires_in`, which is relative to issuance.
+ * An already-expired token yields 0 and is refreshed on first use.
+ */
+function remainingLifetime(claims: TokenClaims, expiresIn: unknown): number {
+  if (typeof claims.exp === 'number') {
+    return Math.max(0, claims.exp - Math.floor(Date.now() / 1000));
+  }
+  return typeof expiresIn === 'number' && expiresIn > 0 ? expiresIn : DEFAULT_EXPIRES_IN;
 }
 
 const isToken = (value: unknown): value is string =>
@@ -117,8 +130,7 @@ export function createConnectionHandlers(deps: {
       const identity = readClaims(idToken);
       const access = readClaims(access_token);
       const auth = identity['https://api.openai.com/auth'] ?? {};
-      const expiresIn =
-        typeof expires_in === 'number' && expires_in > 0 ? expires_in : DEFAULT_EXPIRES_IN;
+      const expiresIn = remainingLifetime(access, expires_in);
       const metadata: ConnectionMetadata = {
         clientId: client_id,
         accountEmail: identity.email,

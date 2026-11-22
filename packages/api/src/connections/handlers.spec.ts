@@ -17,6 +17,7 @@ function memoryStore(): ConnectionStore & { rows: Map<string, StoredConnection> 
         providerId: key.providerId,
         endpoint: key.endpoint,
         accessToken: grant.accessToken,
+        accessTokenExpiresAt: new Date(Date.now() + grant.expiresIn * 1000),
         refreshToken: grant.refreshToken,
         metadata,
       });
@@ -186,6 +187,56 @@ describe('createConnectionHandlers', () => {
       ],
     });
     expect(JSON.stringify(res.body)).not.toContain('refresh-secret');
+  });
+
+  describe('access token lifetime', () => {
+    const nowSeconds = () => Math.floor(Date.now() / 1000);
+    const storedExpiry = async (store: ReturnType<typeof memoryStore>) =>
+      (
+        await store.read({ userId: 'user-1', providerId: 'chatgpt', endpoint: 'ChatGPT' })
+      )?.accessTokenExpiresAt?.getTime() ?? NaN;
+
+    it('takes the token own exp, so a token uploaded after it expired is refreshed on first use', async () => {
+      const store = memoryStore();
+      const { connect } = createConnectionHandlers({ getStore: () => store });
+      const issuedThirteenHoursAgo = jwt({ exp: nowSeconds() - 12 * 3600 });
+
+      await connect(
+        request({ body: { ...validBody, access_token: issuedThirteenHoursAgo, expires_in: 3600 } }),
+        response().api,
+      );
+
+      expect(await storedExpiry(store)).toBeLessThanOrEqual(Date.now());
+    });
+
+    it('keeps only the remaining lifetime of a still-valid token, not a fresh expires_in', async () => {
+      const store = memoryStore();
+      const { connect } = createConnectionHandlers({ getStore: () => store });
+      const thirtyMinutesLeft = jwt({ exp: nowSeconds() + 30 * 60 });
+
+      await connect(
+        request({ body: { ...validBody, access_token: thirtyMinutesLeft, expires_in: 3600 } }),
+        response().api,
+      );
+
+      const remainingMs = (await storedExpiry(store)) - Date.now();
+      expect(remainingMs).toBeGreaterThan(29 * 60 * 1000);
+      expect(remainingMs).toBeLessThanOrEqual(30 * 60 * 1000);
+    });
+
+    it('falls back to expires_in when the token carries no exp', async () => {
+      const store = memoryStore();
+      const { connect } = createConnectionHandlers({ getStore: () => store });
+
+      await connect(
+        request({ body: { ...validBody, access_token: jwt({}), expires_in: 600 } }),
+        response().api,
+      );
+
+      const remainingMs = (await storedExpiry(store)) - Date.now();
+      expect(remainingMs).toBeGreaterThan(590 * 1000);
+      expect(remainingMs).toBeLessThanOrEqual(600 * 1000);
+    });
   });
 
   it('disconnects only the signed-in user', async () => {

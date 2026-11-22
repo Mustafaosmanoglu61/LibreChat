@@ -6,7 +6,6 @@ const {
   createConnectionStore,
   createConnectionResolver,
 } = require('@librechat/api');
-const { getLogStores } = require('~/cache');
 const db = require('~/models');
 
 /** Built on first use so requiring this module has no side effects. */
@@ -33,7 +32,13 @@ function resolveConnection(params) {
 
 /** Flow state lives in the shared FLOWS cache, so start and complete may land on different replicas. */
 function getConnectionFlows() {
-  flows ??= createConnectionFlows({
+  if (flows != null) {
+    return flows;
+  }
+  /* Required here, not at the top: loading the cache module builds every log store, which
+     this module must not do merely by being required (route tables and tests load it). */
+  const { getLogStores } = require('~/cache');
+  flows = createConnectionFlows({
     store: getConnectionStore(),
     flows: getLogStores(CacheKeys.FLOWS),
     providers: getProviders(),

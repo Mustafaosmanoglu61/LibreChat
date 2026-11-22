@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { MessageSquare, Info } from 'lucide-react';
+import { MessageSquare, Info, Plug } from 'lucide-react';
 import { SettingsTabValues } from 'librechat-data-provider';
 import { GearIcon, DataIcon, UserIcon, SpeechIcon } from '@librechat/client';
 import type { ComponentType, ReactNode } from 'react';
@@ -9,6 +9,7 @@ export type SettingsTab =
   | SettingsTabValues.GENERAL
   | SettingsTabValues.CHAT
   | SettingsTabValues.SPEECH
+  | SettingsTabValues.CONNECTIONS
   | SettingsTabValues.LANGFUSE
   | SettingsTabValues.DATA
   | SettingsTabValues.ACCOUNT
@@ -30,6 +31,7 @@ export type SectionId =
   | 'codeExecution'
   | 'data'
   | 'apiKeys'
+  | 'connections'
   | 'langfuse'
   | 'danger'
   | 'profile'
@@ -52,6 +54,7 @@ export interface SettingsContextValue {
   aboutEnabled: boolean;
   engineTTS: string;
   langfuseConnectionAccess: boolean;
+  connectionsEnabled: boolean;
   adminPanelURL: string;
 }
 
@@ -123,6 +126,13 @@ export const TABS: TabMeta[] = [
       { id: 'stt', labelKey: 'com_ui_settings_section_stt' },
       { id: 'tts', labelKey: 'com_ui_settings_section_tts' },
     ],
+  },
+  {
+    id: SettingsTabValues.CONNECTIONS,
+    labelKey: 'com_ui_settings_tab_connections',
+    icon: createElement(Plug, { className: 'icon-sm', 'aria-hidden': true }),
+    sections: [{ id: 'connections', labelKey: 'com_ui_settings_section_connections' }],
+    show: (ctx) => ctx.connectionsEnabled,
   },
   {
     id: SettingsTabValues.LANGFUSE,

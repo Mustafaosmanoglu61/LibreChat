@@ -2295,6 +2295,8 @@ export type TStartupConfig = {
   socialLogins?: string[];
   langfuseFanoutEnabled?: boolean;
   langfuseConnectionAccess?: boolean;
+  /** Per-user provider connections are on; shows the Connections settings tab. */
+  connectionsEnabled?: boolean;
   insightsEnabled?: boolean;
   /** Manual context compaction, gated by the same `summarization.enabled`
    *  switch that governs the automatic detour. */
@@ -2860,6 +2862,8 @@ export const connectionsSchema = z.object({
   enabled: z.boolean().default(false),
   /** Refresh this far ahead of expiry so a streamed turn does not outlive its token. */
   refreshLeadMs: z.number().int().min(0).max(600_000).default(120_000),
+  /** How long a browser connect may take, from opening consent to pasting the address back. */
+  flowTtlMs: z.number().int().min(60_000).max(3_600_000).default(600_000),
   providers: z.record(connectionProviderSchema).default({}),
 });
 
@@ -3862,6 +3866,10 @@ export enum SettingsTabValues {
    * Tab for Speech Settings
    */
   SPEECH = 'speech',
+  /**
+   * Tab for the user's own provider connections
+   */
+  CONNECTIONS = 'connections',
   /**
    * Tab for Langfuse Settings
    */

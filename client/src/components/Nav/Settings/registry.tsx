@@ -43,6 +43,7 @@ import { TokenCredits, AutoRefill } from './BillingControls';
 import AdminPanel from '../SettingsTabs/General/AdminPanel';
 import SharedLinks from '../SettingsTabs/Data/SharedLinks';
 import ImageResize from '../SettingsTabs/Chat/ImageResize';
+import { Connections } from '../SettingsTabs/Connections';
 import { showThinkingAtom } from '~/store/showThinking';
 import ProviderKeys from '../SettingsTabs/ProviderKeys';
 import { autoScrollAtom } from '~/store/autoScroll';
@@ -674,6 +675,16 @@ export const registry: SettingEntry[] = [
     section: 'apiKeys',
     labelKey: 'com_ui_settings_label_revoke_keys',
     Component: RevokeKeys,
+  },
+  // Connections
+  {
+    id: 'providerConnections',
+    tab: SettingsTabValues.CONNECTIONS,
+    section: 'connections',
+    labelKey: 'com_ui_connections_title',
+    keywords: ['connections', 'connect', 'account', 'chatgpt', 'openai', 'oauth'],
+    show: (ctx) => ctx.connectionsEnabled,
+    Component: Connections,
   },
   // Langfuse
   {

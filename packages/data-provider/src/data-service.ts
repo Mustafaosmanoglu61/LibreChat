@@ -70,6 +70,30 @@ export function getConversationTraceRecord(
   );
 }
 
+export function getConnections(): Promise<t.TConnectionsResponse> {
+  return request.get(endpoints.connections());
+}
+
+export function startConnection({
+  providerId,
+  endpoint,
+}: t.TConnectionTarget): Promise<t.TConnectionStartResponse> {
+  return request.post(endpoints.connectionStart(providerId, endpoint));
+}
+
+export function completeConnection({
+  providerId,
+  endpoint,
+  flowId,
+  callbackUrl,
+}: t.TConnectionCompleteRequest): Promise<t.TConnectionStatus> {
+  return request.post(endpoints.connectionComplete(providerId, endpoint), { flowId, callbackUrl });
+}
+
+export function disconnectConnection({ providerId, endpoint }: t.TConnectionTarget): Promise<void> {
+  return request.delete(endpoints.connection(providerId, endpoint));
+}
+
 export function getLangfuseConnection(): Promise<t.TLangfuseConnectionStatus> {
   return request.get(endpoints.adminLangfuseConnection());
 }

@@ -3,7 +3,10 @@ import type { TConnectionsConfig } from 'librechat-data-provider';
 import type { Request, Response } from 'express';
 import type { ConnectionStore, ConnectionStatus, ConnectionMetadata } from './types';
 import type { ServerRequest } from '~/types/http';
+import type { ConnectionFlows } from './flow';
+import { buildMetadata, readClaims, remainingLifetime } from './claims';
 import { getConnectionProviderId } from './resolve';
+import { ConnectionFlowError } from './flow';
 
 export type ConnectionRequest = ServerRequest &
   Request<{ providerId?: string; endpoint?: string }, unknown, ConnectBody>;
@@ -11,6 +14,8 @@ export type ConnectionRequest = ServerRequest &
 export type ConnectionRouteHandler = (req: ConnectionRequest, res: Response) => Promise<void>;
 
 export interface ConnectBody {
+  flowId?: unknown;
+  callbackUrl?: unknown;
   client_id?: unknown;
   access_token?: unknown;
   refresh_token?: unknown;
@@ -19,48 +24,25 @@ export interface ConnectBody {
 }
 
 export interface ConnectionHandlers {
+  start: ConnectionRouteHandler;
+  complete: ConnectionRouteHandler;
   connect: ConnectionRouteHandler;
   status: ConnectionRouteHandler;
   disconnect: ConnectionRouteHandler;
 }
 
 const MAX_TOKEN_LENGTH = 16_384;
-const DEFAULT_EXPIRES_IN = 3600;
+const MAX_CALLBACK_URL_LENGTH = 8_192;
+const DEFAULT_FLOW_TTL_MS = 600_000;
 
-interface TokenClaims {
-  exp?: number;
-  email?: string;
-  scp?: string[];
-  'https://api.openai.com/auth'?: { chatgpt_plan_type?: string; chatgpt_account_id?: string };
-}
-
-/**
- * Reads display fields from a JWT without verifying it. Used only to label the
- * connection in the UI; authorization rests on the provider accepting the token.
- */
-function readClaims(jwt: string | undefined): TokenClaims {
-  const payload = jwt?.split('.')[1];
-  if (!payload) {
-    return {};
-  }
-  try {
-    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as TokenClaims;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Seconds the access token has left. A transferred token may have been issued long
- * before upload, so its own `exp` wins over `expires_in`, which is relative to issuance.
- * An already-expired token yields 0 and is refreshed on first use.
- */
-function remainingLifetime(claims: TokenClaims, expiresIn: unknown): number {
-  if (typeof claims.exp === 'number') {
-    return Math.max(0, claims.exp - Math.floor(Date.now() / 1000));
-  }
-  return typeof expiresIn === 'number' && expiresIn > 0 ? expiresIn : DEFAULT_EXPIRES_IN;
-}
+const FLOW_ERROR_STATUS: Record<ConnectionFlowError['code'], number> = {
+  unsupported: 400,
+  flow_not_found: 410,
+  state_mismatch: 400,
+  invalid_callback: 400,
+  denied: 400,
+  exchange_failed: 502,
+};
 
 const isToken = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= MAX_TOKEN_LENGTH;
@@ -94,8 +76,18 @@ function describe(
 
 export function createConnectionHandlers(deps: {
   getStore: () => ConnectionStore;
+  getFlows: () => ConnectionFlows;
 }): ConnectionHandlers {
-  const { getStore } = deps;
+  const { getStore, getFlows } = deps;
+
+  function sendFlowError(res: Response, error: unknown) {
+    if (error instanceof ConnectionFlowError) {
+      res.status(FLOW_ERROR_STATUS[error.code]).json({ error: error.message, code: error.code });
+      return;
+    }
+    logger.error('[connections] Connect flow failed', error);
+    res.status(500).json({ error: 'Connect flow failed', code: 'internal' });
+  }
 
   /** Resolves the route's provider/endpoint only when this deployment's config serves it. */
   function resolveTarget(req: ConnectionRequest) {
@@ -108,6 +100,62 @@ export function createConnectionHandlers(deps: {
   }
 
   return {
+    async start(req, res) {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const target = resolveTarget(req);
+      if (target == null) {
+        res.status(404).json({ error: 'Connection is not configured for this endpoint' });
+        return;
+      }
+      try {
+        const flow = await getFlows().start({
+          userId,
+          ...target,
+          ttlMs: req.config?.connections?.flowTtlMs ?? DEFAULT_FLOW_TTL_MS,
+        });
+        res.status(200).json(flow);
+      } catch (error) {
+        sendFlowError(res, error);
+      }
+    },
+
+    async complete(req, res) {
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+      const target = resolveTarget(req);
+      if (target == null) {
+        res.status(404).json({ error: 'Connection is not configured for this endpoint' });
+        return;
+      }
+      const { flowId, callbackUrl } = req.body ?? {};
+      if (
+        typeof flowId !== 'string' ||
+        typeof callbackUrl !== 'string' ||
+        flowId.length === 0 ||
+        callbackUrl.length === 0 ||
+        flowId.length > 256 ||
+        callbackUrl.length > MAX_CALLBACK_URL_LENGTH
+      ) {
+        res
+          .status(400)
+          .json({ error: 'flowId and callbackUrl are required', code: 'invalid_request' });
+        return;
+      }
+      try {
+        const metadata = await getFlows().complete({ userId, ...target, flowId, callbackUrl });
+        res.status(200).json(describe(target, metadata, true));
+      } catch (error) {
+        sendFlowError(res, error);
+      }
+    },
+
     async connect(req, res) {
       const userId = req.user?.id;
       if (!userId) {
@@ -127,18 +175,8 @@ export function createConnectionHandlers(deps: {
         return;
       }
       const idToken = isToken(id_token) ? id_token : undefined;
-      const identity = readClaims(idToken);
-      const access = readClaims(access_token);
-      const auth = identity['https://api.openai.com/auth'] ?? {};
-      const expiresIn = remainingLifetime(access, expires_in);
-      const metadata: ConnectionMetadata = {
-        clientId: client_id,
-        accountEmail: identity.email,
-        accountId: auth.chatgpt_account_id,
-        plan: auth.chatgpt_plan_type,
-        scopes: access.scp?.join(' '),
-        connectedAt: new Date().toISOString(),
-      };
+      const expiresIn = remainingLifetime(readClaims(access_token), expires_in);
+      const metadata = buildMetadata({ clientId: client_id, idToken, accessToken: access_token });
       try {
         await getStore().write({
           userId,

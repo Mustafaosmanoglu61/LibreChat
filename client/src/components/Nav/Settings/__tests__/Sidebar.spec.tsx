@@ -20,6 +20,7 @@ const ctx: SettingsContextValue = {
   aboutEnabled: false,
   engineTTS: 'browser',
   langfuseConnectionAccess: false,
+  connectionsEnabled: false,
   adminPanelURL: '',
 };
 
@@ -57,6 +58,16 @@ describe('Sidebar', () => {
   it('hides the Langfuse tab without Langfuse connection access', () => {
     setup({ langfuseConnectionAccess: false });
     expect(screen.queryByText('Langfuse')).not.toBeInTheDocument();
+  });
+
+  it('shows the Connections tab when the deployment enables connections', () => {
+    setup({ connectionsEnabled: true });
+    expect(screen.getByText('Connections')).toBeInTheDocument();
+  });
+
+  it('hides the Connections tab when connections are off', () => {
+    setup({ connectionsEnabled: false });
+    expect(screen.queryByText('Connections')).not.toBeInTheDocument();
   });
 
   it('forwards typing to onQueryChange', async () => {

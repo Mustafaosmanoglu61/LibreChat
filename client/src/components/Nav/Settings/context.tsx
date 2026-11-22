@@ -29,6 +29,7 @@ export function useSettingsContext(): SettingsContextValue {
 
   const balanceEnabled = startupConfig?.balance?.enabled === true;
   const langfuseConnectionAccess = startupConfig?.langfuseConnectionAccess === true;
+  const connectionsEnabled = startupConfig?.connectionsEnabled === true;
   const adminPanelURL = startupConfig?.adminPanelURL ?? '';
   const isLocalProvider = user?.provider === 'local';
   const twoFactorEnabled = user?.twoFactorEnabled === true;
@@ -58,6 +59,7 @@ export function useSettingsContext(): SettingsContextValue {
       aboutEnabled,
       engineTTS,
       langfuseConnectionAccess,
+      connectionsEnabled,
       adminPanelURL,
     }),
     [
@@ -75,6 +77,7 @@ export function useSettingsContext(): SettingsContextValue {
       aboutEnabled,
       engineTTS,
       langfuseConnectionAccess,
+      connectionsEnabled,
       adminPanelURL,
     ],
   );

@@ -22,6 +22,7 @@ const settingsContext: SettingsContextValue = {
   aboutEnabled: false,
   engineTTS: 'browser',
   langfuseConnectionAccess: false,
+  connectionsEnabled: false,
   adminPanelURL: '',
 };
 
@@ -86,6 +87,22 @@ describe('settings registry', () => {
           langfuseConnectionAccess: true,
         }),
       ).toBe(true);
+    });
+  });
+
+  describe('connections visibility', () => {
+    const entry = registry.find((setting) => setting.id === 'providerConnections');
+
+    it('places the connections list in the Connections tab', () => {
+      expect(entry).toMatchObject({ tab: SettingsTabValues.CONNECTIONS, section: 'connections' });
+    });
+
+    it('shows the list when the deployment enables connections', () => {
+      expect(entry?.show?.({ ...settingsContext, connectionsEnabled: true })).toBe(true);
+    });
+
+    it('hides the list when connections are off', () => {
+      expect(entry?.show?.({ ...settingsContext, connectionsEnabled: false })).toBe(false);
     });
   });
 

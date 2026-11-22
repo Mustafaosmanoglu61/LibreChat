@@ -1035,6 +1035,45 @@ export type TUpdateSkillNodeRequest = {
   order?: number;
 };
 
+/** A user's own provider connection as the Connections settings tab shows it. Carries no secrets. */
+export type TConnectionStatus = {
+  providerId: string;
+  endpoint: string;
+  connected: boolean;
+  needsReauth: boolean;
+  accountEmail?: string;
+  plan?: string;
+  connectedAt?: string;
+  lastErrorCode?: string;
+};
+
+export type TConnectionsResponse = { connections: TConnectionStatus[] };
+
+export type TConnectionTarget = { providerId: string; endpoint: string };
+
+export type TConnectionStartResponse = {
+  flowId: string;
+  /** Provider consent page, opened in a new tab. */
+  authorizeUrl: string;
+  /** Where the browser lands after consent; the user pastes that address back. */
+  redirectUri?: string;
+};
+
+export type TConnectionCompleteRequest = TConnectionTarget & {
+  flowId: string;
+  callbackUrl: string;
+};
+
+export type TConnectionFlowErrorCode =
+  | 'unsupported'
+  | 'flow_not_found'
+  | 'state_mismatch'
+  | 'invalid_callback'
+  | 'denied'
+  | 'exchange_failed'
+  | 'invalid_request'
+  | 'internal';
+
 export type TLangfuseConnectionStatus = {
   configured: boolean;
   enabled: boolean;

@@ -34,6 +34,7 @@ function tokenResponse(status: number, body: Record<string, unknown>) {
 const config: TConnectionsConfig = {
   enabled: true,
   refreshLeadMs: LEAD_MS,
+  flowTtlMs: 600_000,
   providers: { [CHATGPT_PROVIDER_ID]: { endpoints: [ENDPOINT] } },
 };
 

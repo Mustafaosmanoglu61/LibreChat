@@ -42,7 +42,13 @@ export function getConnectionProviderId(
  * request, while the connections config is read per call so tenant and role
  * overrides apply.
  */
-export function createConnectionResolver(deps: ConnectionResolverDeps) {
+export type ConnectionResolver = (params: {
+  userId: string;
+  endpoint: string;
+  config: TConnectionsConfig | undefined;
+}) => Promise<ResolvedCredential | null>;
+
+export function createConnectionResolver(deps: ConnectionResolverDeps): ConnectionResolver {
   const { store } = deps;
   const now = deps.now ?? Date.now;
   const providers = new Map(deps.providers.map((provider) => [provider.id, provider]));
@@ -130,5 +136,3 @@ export function createConnectionResolver(deps: ConnectionResolverDeps) {
     return flight;
   };
 }
-
-export type ConnectionResolver = ReturnType<typeof createConnectionResolver>;

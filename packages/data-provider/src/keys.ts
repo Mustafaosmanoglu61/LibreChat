@@ -10,6 +10,7 @@ export enum QueryKeys {
   conversation = 'conversation',
   searchEnabled = 'searchEnabled',
   langfuseConnection = 'langfuseConnection',
+  connections = 'connections',
   langfuseSessionLink = 'langfuseSessionLink',
   conversationTraceAvailability = 'conversationTraceAvailability',
   conversationTraceRecords = 'conversationTraceRecords',
@@ -120,6 +121,9 @@ export enum MutationKeys {
   /** Pinned-section display order write, keyed for the same reason. */
   updatePinnedOrder = 'updatePinnedOrder',
   updateLangfuseConnection = 'updateLangfuseConnection',
+  startConnection = 'startConnection',
+  completeConnection = 'completeConnection',
+  disconnectConnection = 'disconnectConnection',
   testLangfuseConnection = 'testLangfuseConnection',
   createAgentApiKey = 'createAgentApiKey',
   deleteAgentApiKey = 'deleteAgentApiKey',
